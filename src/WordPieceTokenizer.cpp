@@ -44,7 +44,6 @@ bool WordPieceTokenizer::load_vocab(const std::string& path)
 	}
 	_vocab.clear();
 	_token_to_id.clear();
-	_id_to_token.clear();
 
 	int id = 0;
 	while (std::getline(file, line))
@@ -53,7 +52,6 @@ bool WordPieceTokenizer::load_vocab(const std::string& path)
 		{
 			_vocab.push_back(line);
 			_token_to_id[line] = id;
-			_id_to_token[id] = line;
 			id++;
 		}
 	}
@@ -222,13 +220,11 @@ void WordPieceTokenizer::init_vocab_from_corpus(std::vector<std::vector<std::str
 		_vocab.push_back(pair.first);
 	}
 
-	// Rebuild token-to-id mappings
+	// Rebuild token-to-id mapping
 	_token_to_id.clear();
-	_id_to_token.clear();
 	for (size_t i = 0; i < _vocab.size(); i++)
 	{
 		_token_to_id[_vocab[i]] = static_cast<int>(i);
-		_id_to_token[static_cast<int>(i)] = _vocab[i];
 	}
 }
 
@@ -385,11 +381,11 @@ std::vector<std::string> WordPieceTokenizer::tokenize_word(const std::string& wo
 		}
 		else
 		{
-			// Fixed: Calculate actual character length correctly
-			// If token starts with ##, remove 2 chars from length
-			size_t actual_length = sub.length();
-			if (sub.length() >= 2 && sub[0] == '#' && sub[1] == '#')
-				actual_length -= 2;
+			// Calculate actual character length correctly
+			// If token starts with ##, subtract 2 from length
+			size_t token_length = sub.length();
+			bool has_prefix = (token_length >= 2 && sub[0] == '#' && sub[1] == '#');
+			size_t actual_length = has_prefix ? token_length - 2 : token_length;
 			start += actual_length;
 		}
 	}
@@ -469,9 +465,9 @@ std::vector<std::string> WordPieceTokenizer::ids_to_tokens(const std::vector<int
 
 	for (int id: ids)
 	{
-		auto it = _id_to_token.find(id);
-		if (it != _id_to_token.end())
-			tokens.push_back(it->second);
+		// Use direct index into _vocab vector instead of map lookup
+		if (id >= 0 && static_cast<size_t>(id) < _vocab.size())
+			tokens.push_back(_vocab[id]);
 		else
 			tokens.push_back("[UNK]");
 	}

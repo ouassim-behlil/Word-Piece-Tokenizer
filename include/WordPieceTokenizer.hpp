@@ -134,9 +134,8 @@ class WordPieceTokenizer
 
 	private:
 		// Member variables
-		std::vector<std::string>				_vocab;          ///< Vocabulary list
+		std::vector<std::string>				_vocab;          ///< Vocabulary list (index is token ID)
 		std::unordered_map<std::string, int>	_token_to_id;    ///< Token to ID mapping
-		std::unordered_map<int, std::string>	_id_to_token;    ///< ID to token mapping
 		int										_unk_id{0};      ///< ID for unknown tokens
 };
 
