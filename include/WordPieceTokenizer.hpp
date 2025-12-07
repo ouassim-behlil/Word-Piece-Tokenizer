@@ -76,6 +76,18 @@ class WordPieceTokenizer
 		 * @return Vector of token strings
 		 */
 		std::vector<std::string>				ids_to_tokens(const std::vector<int>& ids) const;
+		
+		/**
+		 * @brief Get the current vocabulary size
+		 * @return Size of the vocabulary
+		 */
+		size_t									get_vocab_size() const noexcept;
+		
+		/**
+		 * @brief Check if the tokenizer has been trained or loaded
+		 * @return true if vocabulary is available, false otherwise
+		 */
+		bool									is_trained() const noexcept;
 
 	private:
 		// Helper methods

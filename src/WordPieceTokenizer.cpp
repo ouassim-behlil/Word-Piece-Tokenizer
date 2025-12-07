@@ -410,6 +410,13 @@ std::vector<std::string> WordPieceTokenizer::tokenize(const std::string& text) c
 
 	if (text.empty())
 		return (tokens);
+	
+	// Check if tokenizer is trained
+	if (!is_trained())
+	{
+		std::cerr << "Warning: Tokenizer not trained. Please train or load vocabulary first." << std::endl;
+		return (tokens);
+	}
 
 	// Preprocess: convert to lowercase
 	preprocessed_text = text;
@@ -470,4 +477,22 @@ std::vector<std::string> WordPieceTokenizer::ids_to_tokens(const std::vector<int
 	}
 
 	return (tokens);
+}
+
+/**
+ * Get the current vocabulary size
+ * @return Size of the vocabulary
+ */
+size_t WordPieceTokenizer::get_vocab_size() const noexcept
+{
+	return (_vocab.size());
+}
+
+/**
+ * Check if the tokenizer has been trained or loaded
+ * @return true if vocabulary is available, false otherwise
+ */
+bool WordPieceTokenizer::is_trained() const noexcept
+{
+	return (!_vocab.empty() && !_token_to_id.empty());
 }
