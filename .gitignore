@@ -1,1 +1,45 @@
-.vscode/*
+# Build artifacts
+obj/
+tokenizer
+*.o
+*.a
+*.so
+*.dylib
+
+# Generated files
+vocab.txt
+
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Debug files
+*.dSYM/
+vgcore.*
+
+# Compiled object files
+*.lo
+*.ko
+*.obj
+*.elf
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Test files (uncomment if needed)
+# main.cpp
+
+*.txt

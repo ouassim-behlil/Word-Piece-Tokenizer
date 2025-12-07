@@ -1,46 +1,25 @@
 #include "../include/WordPieceTokenizer.hpp"
 
-WordPieceTokenizer::WordPieceTokenizer():unk_id_(0)
+WordPieceTokenizer::WordPieceTokenizer()
 {
-	token_to_id_.clear();
-	_vocab.clear();
 }
 
-bool	WordPieceTokenizer::load_vocab(const std::string& file_path)
+/**
+ * Save vocabulary to file
+ * @param path: Path to save the vocabulary
+ * @return true if successful, false otherwise
+ */
+bool WordPieceTokenizer::save_vocab(const std::string& path) const
 {
-	std::ifstream		file(file_path);
-	std::string			token;
+	std::ofstream	file(path);
 
-	if (!file)
+	if (!file.is_open())
 	{
-		std::cerr << "Error opening file: " << file_path << " to read!\n";
+		std::cerr << "Error: Cannot open file for writing: " << path << std::endl;
 		return (false);
 	}
-	this->_vocab.clear();
-	this->token_to_id_.clear();
-	while (std::getline(file, token))
-	{
-		if (!token.empty())
-			this->_vocab.push_back(token);
-	}
-	for (size_t i=0; i < _vocab.size(); i++)
-	{
-		token_to_id_[_vocab[i]] = static_cast<int>(i);
-	}
-	file.close();
-	return (true);
-}
-
-bool	WordPieceTokenizer::save_vocab(const std::string& file_path) const
-{
-	std::ofstream		file(file_path);
-	
-	if (!file)
-	{
-		std::cerr << "Error opening file: " << file_path << " to write!\n";
-		return (false);
-	}
-	for (const std::string token: this->_vocab)
+	// Fixed: Use const reference instead of copying
+	for (const std::string& token: _vocab)
 	{
 		file << token << "\n";
 	}
@@ -48,51 +27,91 @@ bool	WordPieceTokenizer::save_vocab(const std::string& file_path) const
 	return (true);
 }
 
-std::vector<std::string>	WordPieceTokenizer::split_words(const std::string& text) const
+/**
+ * Load vocabulary from file
+ * @param path: Path to load the vocabulary from
+ * @return true if successful, false otherwise
+ */
+bool WordPieceTokenizer::load_vocab(const std::string& path)
 {
-	std::vector<std::string>	tokens;
-	std::stringstream			stext(text);
-	std::string					token;
+	std::ifstream	file(path);
+	std::string		line;
 
-	while (stext >> token)
+	if (!file.is_open())
 	{
-		if (!token.empty())
-			tokens.push_back(token);
+		std::cerr << "Error: Cannot open file for reading: " << path << std::endl;
+		return (false);
 	}
-	return (tokens);
-}
+	_vocab.clear();
+	token_to_id_.clear();
+	id_to_token_.clear();
 
-std::unordered_map<std::string, int>	WordPieceTokenizer::count_pairs(const std::vector<std::vector<std::string>>& corpus) const
-{
-	std::unordered_map<std::string, int>	pair_count;
-
-	for (const std::vector<std::string>& word: corpus)
+	int id = 0;
+	while (std::getline(file, line))
 	{
-		for (size_t i=0; i + 1 < word.size(); i++)
+		if (!line.empty())
 		{
-			std::string pair = word[i] + " " + word[i+1];
-			pair_count[pair]++;
+			_vocab.push_back(line);
+			token_to_id_[line] = id;
+			id_to_token_[id] = line;
+			id++;
 		}
 	}
-	return (pair_count);
+	file.close();
+	return (true);
 }
 
-void	WordPieceTokenizer::merge_pair(const std::string& pair, std::vector<std::vector<std::string>>& corpus)
+/**
+ * Merge a pair of tokens in the corpus
+ * Fixed: Proper ## prefix logic based on position in word
+ * @param pair: The pair to merge (format: "token1 token2")
+ * @param corpus: The corpus to update
+ */
+void WordPieceTokenizer::merge_pair(const std::string& pair, std::vector<std::vector<std::string>>& corpus)
 {
-	size_t			split_idx = pair.find(' ');
-	std::string		left = pair.substr(0, split_idx);
-	std::string		right = pair.substr(split_idx + 1);
-	std::string		merged = left + right;
+	size_t		split_idx;
+	std::string	left;
+	std::string	right;
 
+	split_idx = pair.find(' ');
+	
+	// Fixed: Add validation for invalid pair format
+	if (split_idx == std::string::npos)
+	{
+		std::cerr << "Error: Invalid pair format: " << pair << std::endl;
+		return;
+	}
+	
+	left = pair.substr(0, split_idx);
+	right = pair.substr(split_idx + 1);
 
 	for (std::vector<std::string>& word: corpus)
 	{
-		std::vector<std::string>	new_word;
+		std::vector<std::string> new_word;
 		for (size_t i = 0; i < word.size();)
 		{
-			if (i + 1 < word.size() && word[i] == left && word[i+1] == right)
+			if (i + 1 < word.size() && word[i] == left && word[i + 1] == right)
 			{
-				new_word.push_back(merged);
+				// Fixed: Proper ## prefix handling
+				// Remove ## from both parts if present
+				std::string clean_left = left;
+				std::string clean_right = right;
+				
+				if (left.length() >= 2 && left.substr(0, 2) == "##")
+					clean_left = left.substr(2);
+				if (right.length() >= 2 && right.substr(0, 2) == "##")
+					clean_right = right.substr(2);
+				
+				std::string clean_merged = clean_left + clean_right;
+				std::string merged_token;
+				
+				// Add ## prefix if this merged token is NOT at word start
+				if (i != 0)
+					merged_token = "##" + clean_merged;
+				else
+					merged_token = clean_merged;
+				
+				new_word.push_back(merged_token);
 				i += 2;
 			}
 			else
@@ -105,114 +124,326 @@ void	WordPieceTokenizer::merge_pair(const std::string& pair, std::vector<std::ve
 	}
 }
 
-std::vector<std::string>	WordPieceTokenizer::tokenize_word(const std::string& word) const
+/**
+ * Count all adjacent token pairs in the corpus
+ * @param corpus: The corpus to analyze
+ * @return Map of pairs to their frequencies
+ */
+std::unordered_map<std::string, int> WordPieceTokenizer::count_pairs(const std::vector<std::vector<std::string>>& corpus) const
 {
-	std::vector<std::string>	sub_tokens;
-	size_t						word_len = word.size();
-	size_t						start{0};
+	std::unordered_map<std::string, int> pairs;
 
-	while (start < word_len)
+	for (const std::vector<std::string>& word: corpus)
 	{
-		size_t		end = word_len;
-		std::string	current_substr;
-		bool		matched{false};
-		while (end > start)
+		for (size_t i = 0; i < word.size() - 1; i++)
 		{
-			std::string		sub = word.substr(start, end - start);
-
-			if (start > 0)
-				sub = "##" + sub;
-			if (this->token_to_id_.count(sub))
-			{
-				matched = true;
-				current_substr = sub;
-				break;
-			}
-			end--;
+			// Fixed: More efficient string concatenation
+			std::string pair;
+			pair.reserve(word[i].size() + word[i + 1].size() + 1);
+			pair = word[i] + " " + word[i + 1];
+			pairs[pair]++;
 		}
-		if (!matched)
-		{
-			sub_tokens.push_back(this->_vocab[this->unk_id_]);
-			return (sub_tokens);
-		}
-		sub_tokens.push_back(current_substr);
-		start = end;
 	}
-	return (sub_tokens);
+	return (pairs);
 }
 
-std::vector<std::vector<std::string>>	WordPieceTokenizer::build_initial_corpus(const std::vector<std::string>& words) const
+/**
+ * Split text into words (whitespace-separated)
+ * @param text: Input text to split
+ * @return Vector of words
+ */
+std::vector<std::string> WordPieceTokenizer::split_words(const std::string& text) const
 {
-	std::vector<std::vector<std::string>>	corpus;
+	std::vector<std::string>	words;
+	std::istringstream			iss(text);
+	std::string					word;
+
+	while (iss >> word)
+	{
+		words.push_back(word);
+	}
+	return (words);
+}
+
+/**
+ * Build initial corpus with character-level tokens
+ * Characters at word start have no prefix, others get ## prefix
+ * @param words: Vector of words to process
+ * @return Initial corpus with character-level tokenization
+ */
+std::vector<std::vector<std::string>> WordPieceTokenizer::build_initial_corpus(const std::vector<std::string>& words) const
+{
+	std::vector<std::vector<std::string>> corpus;
 
 	for (const std::string& word: words)
 	{
-		std::vector<std::string>	chars;
-		for (char c: word)
+		std::vector<std::string> chars;
+		for (size_t i = 0; i < word.length(); i++)
 		{
-			chars.push_back(std::string(1, c));
+			std::string c(1, word[i]);
+			// First character has no prefix, others get ##
+			if (i == 0)
+				chars.push_back(c);
+			else
+				chars.push_back("##" + c);
 		}
-		corpus.push_back(chars);
+		if (!chars.empty())
+			corpus.push_back(chars);
 	}
 	return (corpus);
 }
 
-void	WordPieceTokenizer::init_vocab_from_corpus(std::vector<std::vector<std::string>>& corpus)
+/**
+ * Initialize vocabulary from corpus (extract all unique tokens)
+ * @param corpus: The corpus to extract tokens from
+ */
+void WordPieceTokenizer::init_vocab_from_corpus(std::vector<std::vector<std::string>>& corpus)
 {
-	size_t	idx{1};
+	std::unordered_map<std::string, bool> unique_tokens;
 
+	// Add special tokens first
 	_vocab.clear();
-	token_to_id_.clear();
 	_vocab.push_back("[UNK]");
-	token_to_id_["[UNK]"] = 0;
-	for (std::vector<std::string>& word: corpus)
+	_vocab.push_back("[PAD]");
+	_vocab.push_back("[CLS]");
+	_vocab.push_back("[SEP]");
+	_vocab.push_back("[MASK]");
+
+	for (const std::vector<std::string>& word: corpus)
 	{
-		for (std::string& token: word)
+		for (const std::string& token: word)
 		{
-			if (!token_to_id_.count(token))
-			{
-				_vocab.push_back(token);
-				token_to_id_[token] = idx++;
-			}
+			unique_tokens[token] = true;
 		}
 	}
-}
 
-std::vector<std::string>	WordPieceTokenizer::tokenize(const std::string& text) const
-{
-	std::vector<std::string>	sub_tokens;
-	std::vector<std::string>	words = split_words(text);
-
-	for (std::string word: words)
+	for (const auto& pair: unique_tokens)
 	{
-		std::vector<std::string>	word_sub_tokens = tokenize_word(word);
-		sub_tokens.insert(sub_tokens.end(), word_sub_tokens.begin(), word_sub_tokens.end());
+		_vocab.push_back(pair.first);
 	}
-	return (sub_tokens);
+
+	// Rebuild token-to-id mappings
+	token_to_id_.clear();
+	id_to_token_.clear();
+	for (size_t i = 0; i < _vocab.size(); i++)
+	{
+		token_to_id_[_vocab[i]] = static_cast<int>(i);
+		id_to_token_[static_cast<int>(i)] = _vocab[i];
+	}
 }
 
-std::vector<int>	WordPieceTokenizer::tokens_to_ids(const std::vector<std::string>& tokens) const
+/**
+ * Train the tokenizer on provided text
+ * @param text: Training corpus text
+ * @param vocab_size: Target vocabulary size
+ * @return true if successful, false otherwise
+ */
+bool WordPieceTokenizer::train(const std::string& text, int vocab_size)
 {
-	std::vector<int>	ids;
+	std::vector<std::string>				words;
+	std::vector<std::vector<std::string>>	corpus;
+
+	if (text.empty())
+		return (false);
+
+	words = split_words(text);
+	corpus = build_initial_corpus(words);
+	init_vocab_from_corpus(corpus);
+
+	// Fixed: Misleading indentation - while loop is separate from if
+	if (corpus.empty())
+		return (false);
+
+	while (_vocab.size() < static_cast<size_t>(vocab_size))
+	{
+		std::unordered_map<std::string, int> pairs = count_pairs(corpus);
+		
+		if (pairs.empty())
+			break;
+
+		// Find most frequent pair
+		std::string best_pair;
+		int max_freq = 0;
+		// Fixed: Use const reference
+		for (const auto& pair: pairs)
+		{
+			if (pair.second > max_freq)
+			{
+				max_freq = pair.second;
+				best_pair = pair.first;
+			}
+		}
+
+		merge_pair(best_pair, corpus);
+		init_vocab_from_corpus(corpus);
+
+		// Progress reporting
+		if (_vocab.size() % 100 == 0)
+		{
+			std::cout << "Vocabulary size: " << _vocab.size() << " / " << vocab_size << std::endl;
+		}
+	}
+
+	return (true);
+}
+
+/**
+ * Train tokenizer from file
+ * @param filepath: Path to training corpus file
+ * @param vocab_size: Target vocabulary size
+ * @return true if successful, false otherwise
+ */
+bool WordPieceTokenizer::train_from_file(const std::string& filepath, int vocab_size)
+{
+	std::ifstream	file(filepath);
+	std::string		line;
+	std::string		text;
+
+	if (!file.is_open())
+	{
+		std::cerr << "Error: Cannot open file: " << filepath << std::endl;
+		return (false);
+	}
+
+	// Read entire file and convert to lowercase
+	while (std::getline(file, line))
+	{
+		// Convert to lowercase for consistency
+		for (char& c: line)
+		{
+			c = std::tolower(static_cast<unsigned char>(c));
+		}
+		text += line + " ";
+	}
+	file.close();
+
+	return (train(text, vocab_size));
+}
+
+/**
+ * Tokenize a single word using the learned vocabulary
+ * Uses greedy longest-match-first algorithm
+ * @param word: Word to tokenize
+ * @return Vector of subword tokens
+ */
+std::vector<std::string> WordPieceTokenizer::tokenize_word(const std::string& word) const
+{
+	std::vector<std::string> tokens;
+
+	if (word.empty())
+		return (tokens);
+
+	size_t start = 0;
+	while (start < word.length())
+	{
+		size_t end = word.length();
+		std::string sub;
+		bool found = false;
+
+		// Greedy longest-match-first
+		while (start < end)
+		{
+			sub = word.substr(start, end - start);
+			// Add ## prefix for non-word-initial subwords
+			if (start != 0)
+				sub = "##" + sub;
+
+			// Fixed: More efficient lookup using find()
+			auto it = token_to_id_.find(sub);
+			if (it != token_to_id_.end())
+			{
+				tokens.push_back(sub);
+				found = true;
+				break;
+			}
+			end--;
+		}
+
+		if (!found)
+		{
+			tokens.push_back("[UNK]");
+			start++;
+		}
+		else
+		{
+			start = start + (sub[0] == '#' && sub[1] == '#' ? sub.length() - 2 : sub.length());
+		}
+	}
+
+	return (tokens);
+}
+
+/**
+ * Tokenize input text into subword tokens
+ * @param text: Input text to tokenize
+ * @return Vector of tokens
+ */
+std::vector<std::string> WordPieceTokenizer::tokenize(const std::string& text) const
+{
+	std::vector<std::string>	tokens;
+	std::vector<std::string>	words;
+	std::string					preprocessed_text;
+
+	if (text.empty())
+		return (tokens);
+
+	// Preprocess: convert to lowercase
+	preprocessed_text = text;
+	for (char& c: preprocessed_text)
+	{
+		c = std::tolower(static_cast<unsigned char>(c));
+	}
+
+	words = split_words(preprocessed_text);
+
+	for (const std::string& word: words)
+	{
+		std::vector<std::string> word_tokens = tokenize_word(word);
+		tokens.insert(tokens.end(), word_tokens.begin(), word_tokens.end());
+	}
+
+	return (tokens);
+}
+
+/**
+ * Convert tokens to their integer IDs
+ * @param tokens: Vector of token strings
+ * @return Vector of token IDs
+ */
+std::vector<int> WordPieceTokenizer::tokens_to_ids(const std::vector<std::string>& tokens) const
+{
+	std::vector<int> ids;
 
 	for (const std::string& token: tokens)
 	{
+		// Fixed: More efficient lookup
 		auto it = token_to_id_.find(token);
 		if (it != token_to_id_.end())
 			ids.push_back(it->second);
 		else
 			ids.push_back(unk_id_);
 	}
-	return(ids);
+
+	return (ids);
 }
 
-std::vector<std::string>	WordPieceTokenizer::ids_to_tokens(const std::vector<int>& ids) const
+/**
+ * Convert token IDs back to token strings
+ * @param ids: Vector of token IDs
+ * @return Vector of token strings
+ */
+std::vector<std::string> WordPieceTokenizer::ids_to_tokens(const std::vector<int>& ids) const
 {
-	std::vector<std::string>	tokens;
+	std::vector<std::string> tokens;
 
-	for (const int& id: ids)
+	for (int id: ids)
 	{
-		auto it = tokens_to_ids()
+		auto it = id_to_token_.find(id);
+		if (it != id_to_token_.end())
+			tokens.push_back(it->second);
+		else
+			tokens.push_back("[UNK]");
 	}
+
 	return (tokens);
 }
