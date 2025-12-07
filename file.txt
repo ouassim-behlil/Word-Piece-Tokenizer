@@ -1,0 +1,4 @@
+hello world this is a test of the wordpiece tokenizer
+the tokenizer can handle various words and learn subword units
+machine learning natural language processing is amazing
+tokenization helps in understanding text better

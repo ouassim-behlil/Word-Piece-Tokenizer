@@ -42,4 +42,4 @@ vgcore.*
 # Test files (uncomment if needed)
 # main.cpp
 
-*.txt
+*.txt_codeql_detected_source_root

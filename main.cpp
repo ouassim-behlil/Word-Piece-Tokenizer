@@ -25,6 +25,7 @@ int main()
 
 	// Save vocabulary
 	std::cout << "Saving vocabulary to vocab.txt..." << std::endl;
+	std::cout << "Vocabulary size: " << tokenizer.get_vocab_size() << " tokens" << std::endl;
 	if (!tokenizer.save_vocab("vocab.txt"))
 	{
 		std::cerr << "Error: Failed to save vocabulary!" << std::endl;

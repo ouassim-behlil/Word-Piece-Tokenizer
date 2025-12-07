@@ -43,8 +43,7 @@ bool WordPieceTokenizer::load_vocab(const std::string& path)
 		return (false);
 	}
 	_vocab.clear();
-	token_to_id_.clear();
-	id_to_token_.clear();
+	_token_to_id.clear();
 
 	int id = 0;
 	while (std::getline(file, line))
@@ -52,8 +51,7 @@ bool WordPieceTokenizer::load_vocab(const std::string& path)
 		if (!line.empty())
 		{
 			_vocab.push_back(line);
-			token_to_id_[line] = id;
-			id_to_token_[id] = line;
+			_token_to_id[line] = id;
 			id++;
 		}
 	}
@@ -222,13 +220,11 @@ void WordPieceTokenizer::init_vocab_from_corpus(std::vector<std::vector<std::str
 		_vocab.push_back(pair.first);
 	}
 
-	// Rebuild token-to-id mappings
-	token_to_id_.clear();
-	id_to_token_.clear();
+	// Rebuild token-to-id mapping
+	_token_to_id.clear();
 	for (size_t i = 0; i < _vocab.size(); i++)
 	{
-		token_to_id_[_vocab[i]] = static_cast<int>(i);
-		id_to_token_[static_cast<int>(i)] = _vocab[i];
+		_token_to_id[_vocab[i]] = static_cast<int>(i);
 	}
 }
 
@@ -243,16 +239,35 @@ bool WordPieceTokenizer::train(const std::string& text, int vocab_size)
 	std::vector<std::string>				words;
 	std::vector<std::vector<std::string>>	corpus;
 
+	// Input validation
 	if (text.empty())
+	{
+		std::cerr << "Error: Training text is empty" << std::endl;
 		return (false);
+	}
+	
+	if (vocab_size <= 0)
+	{
+		std::cerr << "Error: Vocabulary size must be positive" << std::endl;
+		return (false);
+	}
 
 	words = split_words(text);
+	
+	if (words.empty())
+	{
+		std::cerr << "Error: No words found in training text" << std::endl;
+		return (false);
+	}
+	
 	corpus = build_initial_corpus(words);
 	init_vocab_from_corpus(corpus);
 
-	// Fixed: Misleading indentation - while loop is separate from if
 	if (corpus.empty())
+	{
+		std::cerr << "Error: Failed to build initial corpus" << std::endl;
 		return (false);
+	}
 
 	while (_vocab.size() < static_cast<size_t>(vocab_size))
 	{
@@ -349,8 +364,8 @@ std::vector<std::string> WordPieceTokenizer::tokenize_word(const std::string& wo
 				sub = "##" + sub;
 
 			// Fixed: More efficient lookup using find()
-			auto it = token_to_id_.find(sub);
-			if (it != token_to_id_.end())
+			auto it = _token_to_id.find(sub);
+			if (it != _token_to_id.end())
 			{
 				tokens.push_back(sub);
 				found = true;
@@ -366,7 +381,12 @@ std::vector<std::string> WordPieceTokenizer::tokenize_word(const std::string& wo
 		}
 		else
 		{
-			start = start + (sub[0] == '#' && sub[1] == '#' ? sub.length() - 2 : sub.length());
+			// Calculate actual character length correctly
+			// If token starts with ##, subtract 2 from length
+			size_t token_length = sub.length();
+			bool has_prefix = (token_length >= 2 && sub[0] == '#' && sub[1] == '#');
+			size_t actual_length = has_prefix ? token_length - 2 : token_length;
+			start += actual_length;
 		}
 	}
 
@@ -386,6 +406,13 @@ std::vector<std::string> WordPieceTokenizer::tokenize(const std::string& text) c
 
 	if (text.empty())
 		return (tokens);
+	
+	// Check if tokenizer is trained
+	if (!is_trained())
+	{
+		std::cerr << "Warning: Tokenizer not trained. Please train or load vocabulary first." << std::endl;
+		return (tokens);
+	}
 
 	// Preprocess: convert to lowercase
 	preprocessed_text = text;
@@ -417,11 +444,11 @@ std::vector<int> WordPieceTokenizer::tokens_to_ids(const std::vector<std::string
 	for (const std::string& token: tokens)
 	{
 		// Fixed: More efficient lookup
-		auto it = token_to_id_.find(token);
-		if (it != token_to_id_.end())
+		auto it = _token_to_id.find(token);
+		if (it != _token_to_id.end())
 			ids.push_back(it->second);
 		else
-			ids.push_back(unk_id_);
+			ids.push_back(_unk_id);
 	}
 
 	return (ids);
@@ -438,12 +465,30 @@ std::vector<std::string> WordPieceTokenizer::ids_to_tokens(const std::vector<int
 
 	for (int id: ids)
 	{
-		auto it = id_to_token_.find(id);
-		if (it != id_to_token_.end())
-			tokens.push_back(it->second);
+		// Use direct index into _vocab vector instead of map lookup
+		if (id >= 0 && static_cast<size_t>(id) < _vocab.size())
+			tokens.push_back(_vocab[id]);
 		else
 			tokens.push_back("[UNK]");
 	}
 
 	return (tokens);
+}
+
+/**
+ * Get the current vocabulary size
+ * @return Size of the vocabulary
+ */
+size_t WordPieceTokenizer::get_vocab_size() const noexcept
+{
+	return (_vocab.size());
+}
+
+/**
+ * Check if the tokenizer has been trained or loaded
+ * @return true if vocabulary is available, false otherwise
+ */
+bool WordPieceTokenizer::is_trained() const noexcept
+{
+	return (!_vocab.empty() && !_token_to_id.empty());
 }
